@@ -1,0 +1,83 @@
+name: telemetry
+
+networks:
+  inner:
+    driver: bridge
+
+services:
+  otel-collector:
+    image: ${REGISTRY_HOST}/proxy/otel/opentelemetry-collector-contrib:${OTEL_VERSION}
+    restart: unless-stopped
+    container_name: otel-collector
+    command:
+      - --config=/etc/otelcol-contrib/otel-collector.yml
+    volumes:
+      - /data/telemetry/otel-collector/application.yml:/etc/otelcol-contrib/otel-collector.yml:ro
+    expose:
+      - "1888" # pprof extension
+      - "8888" # Prometheus metrics exposed by the collector
+      - "8889" # Prometheus exporter metrics
+      - "13133" # health_check extension
+      - "4317" # OTLP gRPC receiver
+      - "4318" # OTLP http receiver
+      - "55679" # zpages extension
+    networks:
+      - inner
+    depends_on:
+      - prometheus
+      - tempo
+      - loki
+  prometheus:
+    image: ${REGISTRY_HOST}/proxy/prom/prometheus:${PROMETHEUS_VERSION}
+    restart: unless-stopped
+    container_name: prometheus
+    command: --config.file=/etc/prometheus/prometheus.yml --no-scrape.adjust-timestamps
+    volumes:
+      - /data/telemetry/prometheus/application.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    networks:
+      - inner
+  grafana:
+    image: ${REGISTRY_HOST}/proxy/grafana/grafana:${GRAFANA_VERSION}
+    restart: unless-stopped
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - /data/telemetry/grafana:/var/lib/grafana
+      - ./grafana/provisioning/:/etc/grafana/provisioning/
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+    user: "${GRAFANA_SYSTEM_USER}:${GRAFANA_SYSTEM_PASSWORD}"
+    networks:
+      - inner
+    depends_on:
+      - prometheus
+      - tempo
+      - loki
+  tempo:
+    image: ${REGISTRY_HOST}/proxy/grafana/tempo:main-2b00b4e
+    restart: unless-stopped
+    container_name: tempo
+    command: [ "-config.file=/etc/tempo.yml" ]
+    volumes:
+      - /data/telemetry/tempo/application.yml:/etc/tempo.yml
+    ports:
+      - "3200:3200"   # tempo
+    expose:
+      - "4317"        # otlp grpc
+    networks:
+      - inner
+    depends_on:
+      - prometheus
+  loki:
+    image: ${REGISTRY_HOST}/proxy/grafana/loki:main-6c49cc0
+    restart: unless-stopped
+    container_name: loki
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+    networks:
+      - inner
