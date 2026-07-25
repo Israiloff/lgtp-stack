@@ -1,0 +1,54 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "0.0.0.0:4317"
+      http:
+        endpoint: "0.0.0.0:4318"
+        cors:
+          allowed_origins:
+            - "http://*"
+            - "https://*"
+
+processors:
+  batch:
+
+exporters:
+  debug:
+    verbosity: detailed
+  otlp:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    namespace: "otel_collector"
+  loki:
+    endpoint: "http://loki:3100/loki/api/v1/push"
+ 
+extensions:
+  zpages:
+  pprof:
+    endpoint: "0.0.0.0:1888"
+  health_check:
+    endpoint: "0.0.0.0:13133"
+
+service:
+  extensions: [health_check, pprof, zpages]
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheus]
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp]
+    logs:
+      receivers: [otlp]
+      exporters: [loki]
+#  telemetry:
+#    logs:
+#      level: "DEBUG"
+#      development: true
+#      encoding: "json"
